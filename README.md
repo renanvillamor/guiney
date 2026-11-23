@@ -19,24 +19,27 @@ npm run android          # builds the native app and starts Metro
 system dialogs are native, so check those in a build like the one above. Set `ANDROID_HOME` if the SDK is not found. On Windows that is usually
 `%LOCALAPPDATA%\Android\Sdk`.
 
-A standalone APK, signed with the debug key:
+A standalone APK for phones and emulators:
 
 ```bash
-npx expo prebuild --platform android
-cd android && ./gradlew app:assembleRelease
+npx expo prebuild --platform android --clean
+cd android && ./gradlew app:assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64
 # android/app/build/outputs/apk/release/app-release.apk
 ```
 
 `android/` is generated and not committed. Change native settings in `app.config.ts`.
 
-Before publishing, replace `com.yourcompany.guiney` in `app.config.ts` and sign with your own key.
+Release builds are signed with a private key. `~/.gradle/gradle.properties`, which is never committed,
+names it with `GUINEY_RELEASE_STORE_FILE`, `GUINEY_RELEASE_KEY_ALIAS`, `GUINEY_RELEASE_STORE_PASSWORD` and
+`GUINEY_RELEASE_KEY_PASSWORD`. Without them the APK comes out unsigned and will not install. Back up the
+key and those four lines together: an update signed with another key cannot replace an installed app.
 
 ## Release a new version
 
 Profile, Update version looks at this repository's GitHub Releases when tapped. To publish one:
 
-1. Raise `version` in `app.config.ts`.
-2. Build the APK as above, signed with the same key as the version people have installed.
+1. Raise `version` and `android.versionCode` in `app.config.ts`.
+2. Build the APK as above.
 3. Create a release tagged `v<version>` and attach the APK named exactly `Guiney.apk`.
 
 ## Check it

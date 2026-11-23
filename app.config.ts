@@ -13,8 +13,9 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'automatic',
   backgroundColor: CREAM,
   android: {
-    // Placeholder: replace with your own reverse-domain id before publishing.
-    package: 'com.yourcompany.guiney',
+    package: 'com.amawachoya.guiney',
+    // Raise with every release.
+    versionCode: 1,
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: CREAM,
@@ -38,6 +39,7 @@ const config: ExpoConfig = {
       },
     ],
     './plugins/withShortObjectPaths',
+    './plugins/withReleaseSigning',
     ['./plugins/withAccentColor', { light: '#C2410C', dark: '#FB923C' }],
     'expo-sqlite',
     [
