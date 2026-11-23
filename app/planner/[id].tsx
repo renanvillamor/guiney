@@ -4,7 +4,7 @@ import { Alert } from 'react-native';
 import { Button } from '@/components/Button';
 import { Chip, ChipGroup } from '@/components/Choice';
 import { EmptyState } from '@/components/EmptyState';
-import { cookPlan, planDates, planNotes } from '@/components/plans';
+import { cookPlan, mealsAndDishes, planDates, planNotes } from '@/components/plans';
 import { Card, FormScreen, LinkRow, Section } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { today } from '@/lib/dates';
@@ -57,13 +57,13 @@ export default function PlanEditor() {
       footer={<Button icon="refresh" title="Regenerate" onPress={() => void regenerate()} style={{ flex: 1 }} />}>
       <Txt variant="title">{planDates(plan)}</Txt>
       <Txt color="textMuted">
-        {mine.length === 1 ? '1 meal' : `${mine.length} meals`} planned
-        {locked.length > 0 ? `, ${locked.length} locked` : ''}. Regenerating keeps locked meals and
-        days that have passed.
+        {mealsAndDishes(mine)} planned
+        {locked.length > 0 ? `, ${locked.length} locked` : ''}. Regenerating keeps locked dishes and
+        days that have passed, and replaces the rest.
       </Txt>
       {riskyLocked.length > 0 ? (
         <Txt variant="label" color="danger">
-          {riskyLocked.length === 1 ? 'A locked meal is' : `${riskyLocked.length} locked meals are`}{' '}
+          {riskyLocked.length === 1 ? 'A locked dish is' : `${riskyLocked.length} locked dishes are`}{' '}
           not suitable for everyone eating. Swap or unlock it in the planner.
         </Txt>
       ) : null}

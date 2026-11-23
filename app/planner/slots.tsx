@@ -11,6 +11,8 @@ import { usePlanner } from '@/store';
 import { spacing } from '@/theme/spacing';
 import type { MealSlot } from '@/types/models';
 
+const MAX_DISHES = 5;
+
 export default function Slots() {
   const { slots, addSlot, reorderSlots } = usePlanner();
   const [name, setName] = useState('');
@@ -32,7 +34,7 @@ export default function Slots() {
     <FormScreen title="Meal slots">
       <Txt color="textMuted">
         The name tells Guiney what fits. A slot called Merienda gets snacks; one called Baon gets
-        lunches.
+        lunches. Guiney plans this many dishes, and you can always add more to a meal.
       </Txt>
       {slots.map((slot, index) => (
         <SlotCard
@@ -67,7 +69,7 @@ function SlotCard({
   onUp?: () => void;
   onDown?: () => void;
 }) {
-  const { renameSlot, removeSlot } = usePlanner();
+  const { renameSlot, removeSlot, setSlotDishes } = usePlanner();
   const [name, setName] = useState(slot.name);
 
   const rename = () => {
@@ -92,6 +94,26 @@ function SlotCard({
       <Txt variant="caption" color="textMuted">
         Takes {categoriesForSlot(name).map(categoryLabel).join(', ')}
       </Txt>
+      <View style={styles.row}>
+        <Txt variant="label" style={styles.flex}>
+          Dishes per meal
+        </Txt>
+        <IconButton
+          icon="minus"
+          label={`Fewer dishes for ${slot.name}`}
+          disabled={slot.dishes <= 1}
+          onPress={() => void setSlotDishes(slot.id, slot.dishes - 1)}
+        />
+        <Txt variant="bodyStrong" center style={styles.count} accessibilityLabel={`${slot.dishes} dishes`}>
+          {slot.dishes}
+        </Txt>
+        <IconButton
+          icon="plus"
+          label={`More dishes for ${slot.name}`}
+          disabled={slot.dishes >= MAX_DISHES}
+          onPress={() => void setSlotDishes(slot.id, slot.dishes + 1)}
+        />
+      </View>
     </Card>
   );
 }
@@ -99,4 +121,5 @@ function SlotCard({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  count: { minWidth: 24 },
 });

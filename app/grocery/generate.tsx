@@ -70,14 +70,14 @@ export default function GenerateGroceries() {
         {replaces ? ' The list made from your last plan is replaced; items you added stay.' : ''}
       </Txt>
       {upcoming.map((plan) => {
-        const meals = entries.filter(
+        const dishes = entries.filter(
           (entry) => entry.plan_id === plan.id && entry.recipe_id && entry.date >= now,
         ).length;
         return (
           <SheetRow
             key={plan.id}
             title={planDates(plan)}
-            subtitle={meals === 1 ? '1 meal to cook' : `${meals} meals to cook`}
+            subtitle={dishes === 1 ? '1 dish to cook' : `${dishes} dishes to cook`}
             selected={chosen.includes(plan.id)}
             onPress={() =>
               setChosen((ids) =>

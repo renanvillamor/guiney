@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert, Pressable, SectionList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { Input } from '@/components/Fields';
 import { CATEGORY_ICONS, categoryLabel, ExpiryBadge } from '@/components/Food';
@@ -11,8 +12,9 @@ import { Txt } from '@/components/Txt';
 import { daysAgo, weekday } from '@/lib/dates';
 import { allergyWarnings, dietConflict } from '@/lib/dietary';
 import { normalizeName } from '@/lib/ingredients';
-import { categoriesForSlot, usableOn } from '@/lib/planner';
+import { extrasForSlot, usableOn } from '@/lib/planner';
 import { useHousehold, usePlanner, usePrecooked, useRecipes } from '@/store';
+import { messageOf } from '@/store/account';
 import { planMembers } from '@/store/planner';
 import { radius, spacing } from '@/theme/spacing';
 import { useColors } from '@/theme/ThemeProvider';
@@ -30,19 +32,22 @@ interface Option {
   precookedId: string | null;
 }
 
-export default function PickMeal() {
-  const { planId, date, slotId } = useLocalSearchParams<{
+/** Adds any number of dishes to a meal or, given an entry, swaps that one dish. */
+export default function PickDishes() {
+  const { planId, date, slotId, entryId } = useLocalSearchParams<{
     planId: string;
     date: string;
     slotId: string;
+    entryId?: string;
   }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { plans, slots, entries, setEntry } = usePlanner();
+  const { plans, slots, entries, addDishes, swapDish } = usePlanner();
   const recipes = useRecipes((state) => state.recipes);
   const meals = usePrecooked((state) => state.meals);
   const members = useHousehold((state) => state.members);
   const [query, setQuery] = useState('');
+  const [chosen, setChosen] = useState<Option[]>([]);
 
   const plan = plans.find((row) => row.id === planId);
   const slot = slots.find((row) => row.id === slotId);
@@ -63,13 +68,16 @@ export default function PickMeal() {
     return names.length > 0 ? `Outside ${names.join(' and ')}'s diet` : null;
   };
 
-  const usedElsewhere = new Set(
+  // A container is eaten once, and a meal has each recipe once.
+  const usedMeals = new Set(entries.map((entry) => entry.precooked_meal_id));
+  const here = new Set(
     entries
-      .filter((entry) => !(entry.plan_id === planId && entry.date === date && entry.slot_id === slotId))
-      .map((entry) => entry.precooked_meal_id),
+      .filter((entry) => entry.plan_id === planId && entry.date === date && entry.slot_id === slotId)
+      .map((entry) => entry.recipe_id),
   );
+  const available = recipes.filter((recipe) => !here.has(recipe.id));
   const cooked: Option[] = meals
-    .filter((meal) => !usedElsewhere.has(meal.id) && usableOn(meal, date))
+    .filter((meal) => !usedMeals.has(meal.id) && usableOn(meal, date))
     .map((meal) => {
       const recipe = recipes.find((row) => row.id === meal.recipe_id);
       return {
@@ -96,12 +104,12 @@ export default function PickMeal() {
     recipeId: recipe.id,
     precookedId: null,
   });
-  const wanted = slot ? categoriesForSlot(slot.name) : [];
+  const wanted = slot ? extrasForSlot(slot.name) : [];
   const search = normalizeName(query);
   const sections = [
     { title: 'Already cooked', data: cooked },
-    { title: `Good for ${slot?.name.toLowerCase() ?? 'this'}`, data: recipes.filter((r) => wanted.includes(r.category)).map(option) },
-    { title: 'Everything else', data: recipes.filter((r) => !wanted.includes(r.category)).map(option) },
+    { title: `Good for ${slot?.name.toLowerCase() ?? 'this'}`, data: available.filter((r) => wanted.includes(r.category)).map(option) },
+    { title: 'Everything else', data: available.filter((r) => !wanted.includes(r.category)).map(option) },
   ]
     .map((section) => ({
       ...section,
@@ -109,38 +117,63 @@ export default function PickMeal() {
     }))
     .filter((section) => section.data.length > 0);
 
-  const put = async (item: Option) => {
-    await setEntry(planId, {
-      date,
-      slot_id: slotId,
-      recipe_id: item.recipeId,
-      precooked_meal_id: item.precookedId,
-    });
-    router.back();
-  };
-  const choose = (item: Option) => {
-    if (!item.allergy) {
-      void put(item);
-      return;
+  const isChosen = (item: Option) => chosen.some((other) => other.key === item.key);
+  const save = async (work: Promise<void>) => {
+    try {
+      await work;
+      router.back();
+    } catch (error) {
+      Alert.alert('Could not change the meal', messageOf(error));
     }
-    Alert.alert('This is not safe for everyone', item.allergy, [
-      { text: 'Pick another', style: 'cancel' },
-      { text: 'Use it anyway', style: 'destructive', onPress: () => void put(item) },
-    ]);
   };
+  const take = (item: Option) => {
+    if (entryId) {
+      void save(
+        swapDish(entryId, { recipe_id: item.recipeId, precooked_meal_id: item.precookedId }),
+      );
+    } else {
+      setChosen((items) => [...items, item]);
+    }
+  };
+  const press = (item: Option) => {
+    if (isChosen(item)) {
+      setChosen((items) => items.filter((other) => other.key !== item.key));
+    } else if (!item.allergy) {
+      take(item);
+    } else {
+      Alert.alert('This is not safe for everyone', item.allergy, [
+        { text: 'Pick another', style: 'cancel' },
+        { text: 'Use it anyway', style: 'destructive', onPress: () => take(item) },
+      ]);
+    }
+  };
+  const addChosen = () =>
+    void save(
+      addDishes(
+        planId,
+        chosen.map((item) => ({
+          date,
+          slot_id: slotId,
+          recipe_id: item.recipeId,
+          precooked_meal_id: item.precookedId,
+        })),
+      ),
+    );
 
   return (
     <View style={styles.flex}>
-      <Stack.Screen options={{ title: slot ? `${weekday(date)} ${slot.name.toLowerCase()}` : 'Choose a meal' }} />
+      <Stack.Screen options={{ title: slot ? `${weekday(date)} ${slot.name.toLowerCase()}` : 'Choose dishes' }} />
       <View style={styles.search}>
-        <Input label="Search meals" placeholder="Search meals" value={query} onChangeText={setQuery} />
+        <Input label="Search dishes" placeholder="Search dishes" value={query} onChangeText={setQuery} />
       </View>
       <SectionList
         sections={sections}
+        extraData={chosen}
+        style={styles.flex}
         keyExtractor={(item) => item.key}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.xl }}
+        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl + (chosen.length > 0 ? 0 : insets.bottom) }}
         renderSectionHeader={({ section }) => (
           <Txt variant="heading" style={styles.header}>
             {section.title}
@@ -148,13 +181,14 @@ export default function PickMeal() {
         )}
         renderItem={({ item }) => (
           <Pressable
-            accessibilityRole="button"
-            onPress={() => choose(item)}
+            accessibilityRole={entryId ? 'button' : 'checkbox'}
+            accessibilityState={entryId ? undefined : { checked: isChosen(item) }}
+            onPress={() => press(item)}
             style={({ pressed }) => [
               styles.row,
               {
-                backgroundColor: pressed ? colors.primaryTint : colors.surface,
-                borderColor: colors.border,
+                backgroundColor: pressed || isChosen(item) ? colors.primaryTint : colors.surface,
+                borderColor: isChosen(item) ? colors.primary : colors.border,
               },
             ]}>
             <Icon name={item.icon} color="accentText" />
@@ -175,15 +209,29 @@ export default function PickMeal() {
                 </Txt>
               ) : null}
             </View>
+            {isChosen(item) ? <Icon name="check" color="accentText" /> : null}
           </Pressable>
         )}
         ListEmptyComponent={
           <EmptyState
             variant="empty-recipes"
-            title={query ? 'No meal matches' : 'Guiney is hungry. Add your first recipe!'}
+            title={query ? 'No dish matches' : 'Guiney is hungry. Add your first recipe!'}
           />
         }
       />
+      {chosen.length > 0 ? (
+        <View
+          style={[
+            styles.footer,
+            { borderTopColor: colors.border, paddingBottom: insets.bottom + spacing.md },
+          ]}>
+          <Button
+            icon="plus"
+            title={chosen.length === 1 ? 'Add 1 dish' : `Add ${chosen.length} dishes`}
+            onPress={addChosen}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -191,6 +239,7 @@ export default function PickMeal() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   search: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1 },
   header: { marginTop: spacing.lg, marginBottom: spacing.sm },
   row: {
     flexDirection: 'row',

@@ -110,6 +110,11 @@ const MIGRATIONS: string[] = [
     bought_at TEXT
   );
   `,
+  // More than one dish per meal. The same defaults as the Supabase migration.
+  `
+  ALTER TABLE meal_slots ADD COLUMN dishes INTEGER NOT NULL DEFAULT 1;
+  UPDATE meal_slots SET dishes = 2 WHERE lower(trim(name)) IN ('lunch', 'dinner');
+  `,
 ];
 
 export async function migrate(db: Database): Promise<void> {

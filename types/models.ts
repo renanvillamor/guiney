@@ -110,6 +110,8 @@ export interface PrecookedMeal extends BaseRow {
 export interface MealSlot extends BaseRow {
   name: string;
   order: number;
+  /** How many dishes the generator puts in this meal. People can add more. */
+  dishes: number;
 }
 
 export interface MealPlan extends BaseRow {

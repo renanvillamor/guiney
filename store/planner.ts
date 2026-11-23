@@ -2,7 +2,13 @@ import { create } from 'zustand';
 
 import { repos } from '@/db/client';
 import { dateRange, today } from '@/lib/dates';
-import { generatePlan, type PlannedEntry, type PlannerResult } from '@/lib/planner';
+import {
+  defaultDishes,
+  dishKey,
+  generatePlan,
+  type PlannedEntry,
+  type PlannerResult,
+} from '@/lib/planner';
 import type { MealPlan, MealPlanEntry, MealSlot, Member } from '@/types/models';
 
 import { useFridge } from './fridge';
@@ -30,12 +36,17 @@ interface PlannerState {
   /** Fills the plan. Locked and past meals stay. */
   generate: (planId: string) => Promise<PlannerResult>;
 
-  setEntry: (planId: string, entry: Omit<PlannedEntry, 'locked'>) => Promise<void>;
+  addDishes: (planId: string, dishes: Omit<PlannedEntry, 'locked'>[]) => Promise<void>;
+  swapDish: (
+    entryId: string,
+    dish: Pick<PlannedEntry, 'recipe_id' | 'precooked_meal_id'>,
+  ) => Promise<void>;
   setLocked: (entryId: string, locked: boolean) => Promise<void>;
   clearEntry: (entryId: string) => Promise<void>;
 
   addSlot: (name: string) => Promise<void>;
   renameSlot: (id: string, name: string) => Promise<void>;
+  setSlotDishes: (id: string, dishes: number) => Promise<void>;
   reorderSlots: (ids: string[]) => Promise<void>;
   removeSlot: (id: string) => Promise<void>;
 }
@@ -46,15 +57,15 @@ export function planMembers(plan: MealPlan, members: Member[]): Member[] {
   return chosen.length > 0 ? chosen : members;
 }
 
-/** Two phones can fill the same slot while offline. The newest meal wins. */
-function newestPerSlot(entries: MealPlanEntry[]): MealPlanEntry[] {
-  const bySlot = new Map<string, MealPlanEntry>();
+/** Two phones can add the same dish to the same meal while offline. Show it once. */
+function eachDishOnce(entries: MealPlanEntry[]): MealPlanEntry[] {
+  const byDish = new Map<string, MealPlanEntry>();
   for (const entry of entries) {
-    const key = `${entry.plan_id}/${entry.date}/${entry.slot_id}`;
-    const other = bySlot.get(key);
-    if (!other || entry.updated_at > other.updated_at) bySlot.set(key, entry);
+    const key = `${entry.plan_id}/${dishKey(entry)}`;
+    const other = byDish.get(key);
+    if (!other || entry.updated_at > other.updated_at) byDish.set(key, entry);
   }
-  return [...bySlot.values()];
+  return [...byDish.values()];
 }
 
 export const usePlanner = create<PlannerState>((set, get) => ({
@@ -77,7 +88,7 @@ export const usePlanner = create<PlannerState>((set, get) => ({
     set({
       slots: slotRows.sort((a, b) => a.order - b.order),
       plans: planRows.sort((a, b) => a.start_date.localeCompare(b.start_date)),
-      entries: newestPerSlot(entryRows),
+      entries: eachDishOnce(entryRows),
     });
   },
 
@@ -125,8 +136,16 @@ export const usePlanner = create<PlannerState>((set, get) => ({
     return result;
   },
 
-  setEntry: async (planId, entry) => {
-    await repos().plans.setEntry(planId, { ...entry, locked: false });
+  addDishes: async (planId, dishes) => {
+    await repos().plans.addEntries(
+      planId,
+      dishes.map((dish) => ({ ...dish, locked: false })),
+    );
+    await get().load();
+  },
+
+  swapDish: async (entryId, dish) => {
+    await repos().plans.swapEntry(entryId, dish);
     await get().load();
   },
 
@@ -142,12 +161,21 @@ export const usePlanner = create<PlannerState>((set, get) => ({
 
   addSlot: async (name) => {
     const last = get().slots.at(-1);
-    await repos().slots.add({ name, order: last ? last.order + 1 : 0 });
+    await repos().slots.add({
+      name,
+      order: last ? last.order + 1 : 0,
+      dishes: defaultDishes(name),
+    });
     await get().load();
   },
 
   renameSlot: async (id, name) => {
     await repos().slots.update(id, { name });
+    await get().load();
+  },
+
+  setSlotDishes: async (id, dishes) => {
+    await repos().slots.update(id, { dishes });
     await get().load();
   },
 

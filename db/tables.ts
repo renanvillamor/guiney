@@ -86,7 +86,7 @@ export const COLUMNS: Schema = {
     expiry_date: 'text',
     notes: 'text',
   },
-  meal_slots: { name: 'text', order: 'number' },
+  meal_slots: { name: 'text', order: 'number', dishes: 'number' },
   meal_plans: { start_date: 'text', end_date: 'text', member_ids: 'json' },
   meal_plan_entries: {
     plan_id: 'text',

@@ -31,6 +31,14 @@ cd android && ./gradlew app:assembleRelease
 
 Before publishing, replace `com.yourcompany.guiney` in `app.config.ts` and sign with your own key.
 
+## Release a new version
+
+Profile, Update version looks at this repository's GitHub Releases when tapped. To publish one:
+
+1. Raise `version` in `app.config.ts`.
+2. Build the APK as above, signed with the same key as the version people have installed.
+3. Create a release tagged `v<version>` and attach the APK named exactly `Guiney.apk`.
+
 ## Check it
 
 ```bash
@@ -54,7 +62,7 @@ Leave them blank and the app hides everything about accounts.
 ### Set up Supabase
 
 1. Create a project.
-2. Run `supabase/migrations/20261124000000_guiney.sql` (`supabase db push`, or paste it into the SQL editor).
+2. Run every file in `supabase/migrations`, in order (`supabase db push`, or paste them into the SQL editor).
 3. Keep email sign-in enabled under Authentication.
 4. In the app: Profile (top right of any tab), Sign in, create a household, share the code.
 
@@ -110,6 +118,10 @@ for sync. `lib/planner.ts`, `lib/grocery.ts`, `lib/units.ts` and `lib/dietary.ts
   or diet, because their ingredients are unknown.
 - **Expiry dates** are inclusive: food is good on the date and expired the day after. Pre-cooked meals
   are scheduled no later than that day.
+- **Meals** hold any number of dishes. The generator plans a main dish first, then others of a
+  different kind, up to "Dishes per meal" in Meal slots (2 for lunch and dinner, otherwise 1).
+  Regenerating replaces every dish that is not locked. If two phones regenerate the same plan while
+  offline, both results show after syncing; regenerate once more.
 - **Groceries** merge the same name within weight, volume or count. Grams cannot be subtracted from
   pieces, so "2 onions" stays on the list even with 500 g of onion in the fridge. Expired food does
   not count as stock.

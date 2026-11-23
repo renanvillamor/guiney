@@ -131,12 +131,15 @@ export function LinkRow({
   title,
   subtitle,
   leading,
+  trailing,
   onPress,
   last = false,
 }: {
   title: string;
   subtitle?: string;
   leading?: ReactNode;
+  /** Replaces the chevron, for a row that acts in place. */
+  trailing?: ReactNode;
   onPress: () => void;
   last?: boolean;
 }) {
@@ -162,8 +165,21 @@ export function LinkRow({
           </Txt>
         ) : null}
       </View>
-      <Icon name="chevron-right" color="textMuted" />
+      {trailing ?? <Icon name="chevron-right" color="textMuted" />}
     </Pressable>
+  );
+}
+
+/** A line inside a Card that only shows a value. */
+export function InfoRow({ title, value }: { title: string; value: string }) {
+  const colors = useColors();
+  return (
+    <View accessible style={[styles.link, { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
+      <Txt variant="bodyStrong" style={styles.flex}>
+        {title}
+      </Txt>
+      <Txt color="textMuted">{value}</Txt>
+    </View>
   );
 }
 

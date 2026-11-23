@@ -10,13 +10,30 @@ describe('schema', () => {
   it('migrates once and can be run again', async () => {
     const { db } = await testDatabase();
     await migrate(db);
-    expect(await db.first('PRAGMA user_version')).toEqual({ user_version: 1 });
+    expect(await db.first('PRAGMA user_version')).toEqual({ user_version: 2 });
+  });
+
+  it('gives lunch and dinner two dishes when an older database upgrades', async () => {
+    const { db, repos } = await testDatabase();
+    for (const [order, name] of ['Breakfast', 'Lunch', ' dinner ', 'Snack'].entries()) {
+      await repos.slots.add({ name, order, dishes: 1 });
+    }
+    await db.tx(async (sql) => {
+      await sql.run('ALTER TABLE meal_slots DROP COLUMN dishes');
+      await sql.run('PRAGMA user_version = 1');
+    });
+    const before = await db.all('SELECT id, updated_at FROM meal_slots ORDER BY "order"');
+    await migrate(db);
+    expect((await repos.slots.list()).map((s) => s.dishes)).toEqual([1, 2, 2, 1]);
+    expect(await db.all('SELECT id, updated_at FROM meal_slots ORDER BY "order"')).toEqual(before);
   });
 
   it('seeds slots, two members and ten recipes', async () => {
     const { db, repos } = await testDatabase();
     await seed(db, repos);
-    expect((await repos.slots.list()).map((s) => s.name)).toEqual(DEFAULT_SLOTS);
+    const slots = await repos.slots.list();
+    expect(slots.map((s) => s.name)).toEqual(DEFAULT_SLOTS);
+    expect(slots.map((s) => s.dishes)).toEqual([1, 2, 2, 1]);
     expect(await repos.members.list()).toHaveLength(2);
     const recipes = await repos.recipes.list();
     expect(recipes).toHaveLength(10);
@@ -84,7 +101,7 @@ describe('recipes', () => {
     const id = await repos.recipes.add(draft());
     const meal = await repos.precooked.add({ name: 'Adobo', recipe_id: id, prepared_on: '2026-11-24', expiry_date: null, notes: '' });
     const plan = await repos.plans.add({ start_date: '2026-11-23', end_date: '2026-11-29', member_ids: [] });
-    await repos.plans.setEntry(plan.id, { date: '2026-11-24', slot_id: 's', recipe_id: id, precooked_meal_id: null, locked: false });
+    await repos.plans.addEntries(plan.id, [{ date: '2026-11-24', slot_id: 's', recipe_id: id, precooked_meal_id: null, locked: false }]);
     await repos.recipes.remove(id);
     expect(await repos.recipes.list()).toEqual([]);
     expect(await repos.plans.listEntries()).toEqual([]);
@@ -94,21 +111,47 @@ describe('recipes', () => {
 });
 
 describe('plans', () => {
-  it('setEntry replaces, saveEntries keeps unchanged rows', async () => {
+  const entry = { date: '2026-11-24', slot_id: 's', recipe_id: 'r1', precooked_meal_id: null, locked: false };
+  const dishes = async (repos: Awaited<ReturnType<typeof testDatabase>>['repos']) =>
+    (await repos.plans.listEntries()).map((r) => r.recipe_id ?? r.precooked_meal_id);
+
+  it('a meal holds several dishes, each once', async () => {
     const { repos } = await testDatabase();
-    const plan = await repos.plans.add({ start_date: '2026-11-23', end_date: '2026-11-29', member_ids: ['a'] });
-    const entry = { date: '2026-11-24', slot_id: 's', recipe_id: 'r1', precooked_meal_id: null, locked: false };
-    await repos.plans.setEntry(plan.id, entry);
-    await repos.plans.setEntry(plan.id, { ...entry, recipe_id: 'r2' });
-    const rows = await repos.plans.listEntries();
-    expect(rows.map((r) => r.recipe_id)).toEqual(['r2']);
-    await repos.plans.saveEntries(plan.id, [
+    await repos.plans.addEntries('p', [entry]);
+    await repos.plans.addEntries('p', [
       { ...entry, recipe_id: 'r2' },
-      { ...entry, slot_id: 't', recipe_id: 'r3' },
+      { ...entry, recipe_id: null, precooked_meal_id: 'm' },
+      entry,
     ]);
-    const next = await repos.plans.listEntries();
-    expect(next.find((r) => r.slot_id === 's')!.id).toBe(rows[0]!.id);
-    expect(next).toHaveLength(2);
+    expect(await dishes(repos)).toEqual(['r1', 'r2', 'm']);
+    await repos.plans.addEntries('p', [{ ...entry, date: '2026-11-25' }]);
+    expect(await dishes(repos)).toHaveLength(4);
+  });
+
+  it('swapping or removing one dish leaves the others', async () => {
+    const { repos } = await testDatabase();
+    await repos.plans.addEntries('p', [entry, { ...entry, recipe_id: 'r2' }]);
+    const [first, second] = await repos.plans.listEntries();
+    await repos.plans.setLocked(first!.id, true);
+    await repos.plans.swapEntry(first!.id, { recipe_id: null, precooked_meal_id: 'm' });
+    expect(await dishes(repos)).toEqual(['m', 'r2']);
+    expect((await repos.plans.listEntries())[0]).toMatchObject({ id: first!.id, locked: false });
+    await repos.plans.clearEntry(second!.id);
+    expect(await dishes(repos)).toEqual(['m']);
+  });
+
+  it('saveEntries keeps unchanged rows', async () => {
+    const { repos } = await testDatabase();
+    await repos.plans.addEntries('p', [entry, { ...entry, recipe_id: 'r2' }]);
+    const before = await repos.plans.listEntries();
+    await repos.plans.saveEntries('p', [
+      { ...entry, recipe_id: 'r2' },
+      { ...entry, recipe_id: 'r3' },
+      { ...entry, slot_id: 't' },
+    ]);
+    const after = await repos.plans.listEntries();
+    expect(after).toHaveLength(3);
+    expect(after.find((r) => r.recipe_id === 'r2')!.id).toBe(before[1]!.id);
   });
 
   it('a slot can be reordered, and removing it clears its meals', async () => {
@@ -118,7 +161,8 @@ describe('plans', () => {
     await repos.slots.reorder([...ids].reverse());
     const sorted = (await repos.slots.list()).sort((a, b) => a.order - b.order);
     expect(sorted.map((s) => s.id)).toEqual([...ids].reverse());
-    await repos.plans.setEntry('p', { date: '2026-11-24', slot_id: ids[0]!, recipe_id: 'r', precooked_meal_id: null, locked: false });
+    const dish = { date: '2026-11-24', slot_id: ids[0]!, recipe_id: 'r', precooked_meal_id: null, locked: false };
+    await repos.plans.addEntries('p', [dish, { ...dish, recipe_id: 'r2' }]);
     await repos.slots.remove(ids[0]!);
     expect(await repos.plans.listEntries()).toEqual([]);
   });

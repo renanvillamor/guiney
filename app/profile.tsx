@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { About } from '@/components/About';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { Card, FormScreen, LinkRow, Section } from '@/components/Screen';
@@ -75,6 +76,8 @@ export default function Profile() {
           )}
         </Section>
       ) : null}
+
+      <About />
     </FormScreen>
   );
 }

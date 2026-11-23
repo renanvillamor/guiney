@@ -1,4 +1,4 @@
-import type { PlannedEntry } from '@/lib/planner';
+import { dishKey, type PlannedEntry } from '@/lib/planner';
 import type { Need } from '@/lib/grocery';
 import type { FullRecipe, NewRow, RecipeDraft, Recipe } from '@/types/models';
 
@@ -206,16 +206,24 @@ export function createRepositories(db: Database, context: RowContext) {
             });
           }
         }),
-      /** Puts one meal in a slot, replacing whatever was there. */
-      setEntry: (planId: string, entry: PlannedEntry) =>
+      /** Adds dishes to a meal, next to what is there. A dish it already has is left alone. */
+      addEntries: (planId: string, added: PlannedEntry[]) =>
         write(async (sql) => {
-          for (const row of await entries.listWhere(sql, 'plan_id', planId)) {
-            if (row.date === entry.date && row.slot_id === entry.slot_id) {
-              await entries.softDelete(sql, row.id);
-            }
+          const current: PlannedEntry[] = await entries.listWhere(sql, 'plan_id', planId);
+          for (const entry of added) {
+            if (current.some((row) => dishKey(row) === dishKey(entry))) continue;
+            current.push(await entries.insert(sql, { plan_id: planId, ...entry }));
           }
-          await entries.insert(sql, { plan_id: planId, ...entry });
         }),
+      /** Puts another dish in this one's place. */
+      swapEntry: (entryId: string, dish: Pick<PlannedEntry, 'recipe_id' | 'precooked_meal_id'>) =>
+        write((sql) =>
+          entries.update(sql, entryId, {
+            recipe_id: dish.recipe_id,
+            precooked_meal_id: dish.precooked_meal_id,
+            locked: false,
+          }),
+        ),
       setLocked: (entryId: string, locked: boolean) =>
         write((sql) => entries.update(sql, entryId, { locked })),
       clearEntry: (entryId: string) => write((sql) => entries.softDelete(sql, entryId)),

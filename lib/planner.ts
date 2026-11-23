@@ -59,6 +59,10 @@ export interface PlannerResult {
   skippedPrecooked: SkippedPrecooked[];
 }
 
+/** Two entries with the same key are the same dish in the same meal. */
+export const dishKey = (entry: PlannedEntry): string =>
+  `${entry.date}/${entry.slot_id}/${entry.recipe_id ?? entry.precooked_meal_id}`;
+
 /** How much each consideration counts. Hard rules are filters, not weights. */
 const WEIGHTS = {
   fridgeCoverage: 4,
@@ -67,6 +71,8 @@ const WEIGHTS = {
   dislikedIngredient: -2,
   preferredCuisine: 1.5,
   bestCategory: 1,
+  accompaniment: 2,
+  newCategory: 3,
   usedBefore: -2,
   usedRecently: -4,
   usedSameDay: -20,
@@ -96,6 +102,9 @@ const SLOT_RULES: [keyword: string, categories: Category[]][] = [
 ];
 
 const MAIN_MEALS: Category[] = ['lunch', 'dinner', 'soup'];
+const ACCOMPANIMENTS: Category[] = ['side', 'soup', 'dessert', 'drink'];
+/** Rice or a drink can come back at every meal of the day. */
+const DAILY: Category[] = ['side', 'drink'];
 
 /** Categories a slot accepts. A custom name we cannot read accepts main meals. */
 export function categoriesForSlot(slotName: string): Category[] {
@@ -103,6 +112,21 @@ export function categoriesForSlot(slotName: string): Category[] {
   const rule = SLOT_RULES.find(([keyword]) => containsTerm(name, keyword));
   return rule ? rule[1] : MAIN_MEALS;
 }
+
+const isMainMeal = (categories: Category[]) =>
+  categories.includes('lunch') || categories.includes('dinner');
+
+/** Categories a slot accepts once it has its main dish. */
+export function extrasForSlot(slotName: string): Category[] {
+  const categories = categoriesForSlot(slotName);
+  if (isMainMeal(categories)) return [...new Set([...categories, ...ACCOMPANIMENTS])];
+  if (categories.includes('breakfast')) return [...categories, ...DAILY];
+  return categories;
+}
+
+/** Lunch and dinner are usually more than one dish. */
+export const defaultDishes = (slotName: string): number =>
+  isMainMeal(categoriesForSlot(slotName)) ? 2 : 1;
 
 export function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -225,15 +249,17 @@ export function generatePlan(input: PlannerInput): PlannerResult {
   const slotIds = new Set(slots.map((slot) => slot.id));
   const random = seededRandom(input.seed ?? 1);
   const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  const precookedById = new Map(precookedMeals.map((meal) => [meal.id, meal]));
 
   const key = (date: string, slotId: string) => `${date}/${slotId}`;
-  const entries = new Map<string, PlannedEntry>();
+  const meals = new Map<string, PlannedEntry[]>();
   const usedOn = new Map<string, string[]>();
   const usedPrecooked = new Set(input.reservedPrecookedIds ?? []);
   const stock = new Stock(fridge);
 
   const place = (entry: PlannedEntry) => {
-    entries.set(key(entry.date, entry.slot_id), entry);
+    const at = key(entry.date, entry.slot_id);
+    meals.set(at, [...(meals.get(at) ?? []), entry]);
     if (entry.precooked_meal_id) usedPrecooked.add(entry.precooked_meal_id);
     const recipe = entry.recipe_id ? recipeById.get(entry.recipe_id) : undefined;
     if (recipe) {
@@ -250,7 +276,23 @@ export function generatePlan(input: PlannerInput): PlannerResult {
   }
 
   const openDates = dates.filter((date) => date >= today);
-  const isOpen = (date: string, slotId: string) => !entries.has(key(date, slotId));
+  const dishesAt = (date: string, slot: MealSlot) => meals.get(key(date, slot.id)) ?? [];
+  const isFull = (date: string, slot: MealSlot) =>
+    dishesAt(date, slot).length >= Math.max(1, slot.dishes);
+  const recipeOf = (entry: PlannedEntry) => {
+    const id = entry.recipe_id ?? precookedById.get(entry.precooked_meal_id ?? '')?.recipe_id;
+    return id ? recipeById.get(id) : undefined;
+  };
+  /** A pre-cooked meal nobody linked to a recipe is taken for a main dish. */
+  const hasMain = (date: string, slot: MealSlot) => {
+    const categories = categoriesForSlot(slot.name);
+    return dishesAt(date, slot).some((entry) => {
+      const recipe = recipeOf(entry);
+      return !recipe || categories.includes(recipe.category);
+    });
+  };
+  const hasRecipe = (date: string, slot: MealSlot, recipeId: string) =>
+    dishesAt(date, slot).some((entry) => recipeOf(entry)?.id === recipeId);
 
   // 1. Pre-cooked meals first, the ones that spoil soonest before the others.
   const skippedPrecooked: SkippedPrecooked[] = [];
@@ -284,24 +326,40 @@ export function generatePlan(input: PlannerInput): PlannerResult {
       continue;
     }
 
-    const accepts = (slot: MealSlot) => {
+    const isMainFor = (slot: MealSlot) => {
       const categories = categoriesForSlot(slot.name);
       return recipe
         ? categories.includes(recipe.category)
         : categories.some((category) => MAIN_MEALS.includes(category));
     };
-    const spot = openDates
+    const isExtraFor = (slot: MealSlot) =>
+      recipe !== undefined && !isMainFor(slot) && extrasForSlot(slot.name).includes(recipe.category);
+    const open = openDates
       .filter((date) => usableOn(meal, date))
       .flatMap((date) =>
-        slots
-          .filter((slot) => accepts(slot) && isOpen(date, slot.id))
-          .map((slot) => ({ date, slot_id: slot.id })),
-      )[0];
+        slots.filter((slot) => !isFull(date, slot)).map((slot) => ({ date, slot })),
+      );
+    const spot =
+      open.find(({ date, slot }) =>
+        isMainFor(slot)
+          ? !hasMain(date, slot)
+          : // A side must leave room for the main dish.
+            isExtraFor(slot) &&
+            (hasMain(date, slot) || dishesAt(date, slot).length + 1 < slot.dishes),
+      ) ??
+      // Better a second main dish than food that spoils.
+      open.find(({ slot }) => isMainFor(slot));
     if (!spot) {
       skippedPrecooked.push({ meal, reason: 'no-slot' });
       continue;
     }
-    place({ ...spot, recipe_id: null, precooked_meal_id: meal.id, locked: false });
+    place({
+      date: spot.date,
+      slot_id: spot.slot.id,
+      recipe_id: null,
+      precooked_meal_id: meal.id,
+      locked: false,
+    });
     // Eating the pre-cooked adobo counts as having adobo.
     if (recipe) usedOn.set(recipe.id, [...(usedOn.get(recipe.id) ?? []), spot.date]);
   }
@@ -311,33 +369,43 @@ export function generatePlan(input: PlannerInput): PlannerResult {
   const taste = new Map(safe.map((recipe) => [recipe.id, preferenceScore(recipe, members)]));
   const unfilled: UnfilledSlot[] = [];
 
+  const choose = (
+    date: string,
+    candidates: FullRecipe[],
+    bonus: (recipe: FullRecipe) => number,
+  ): FullRecipe | null => {
+    let best: { recipe: FullRecipe; score: number } | null = null;
+    for (const recipe of candidates) {
+      const score =
+        fridgeScore(recipe, stock, date) +
+        (taste.get(recipe.id) ?? 0) +
+        varietyScore(recipe.id, date, usedOn) +
+        bonus(recipe) +
+        random() * WEIGHTS.jitter;
+      if (!best || score > best.score) best = { recipe, score };
+    }
+    return best?.recipe ?? null;
+  };
+  const put = (date: string, slot: MealSlot, recipe: FullRecipe) =>
+    place({
+      date,
+      slot_id: slot.id,
+      recipe_id: recipe.id,
+      precooked_meal_id: null,
+      locked: false,
+    });
+
   for (const date of openDates) {
+    // Main dishes of the whole day first, so lunch's second dish never takes dinner's main.
     for (const slot of slots) {
-      if (!isOpen(date, slot.id)) continue;
+      if (isFull(date, slot) || hasMain(date, slot)) continue;
       const categories = categoriesForSlot(slot.name);
       const fits = (recipe: FullRecipe) => categories.includes(recipe.category);
-
-      let best: { recipe: FullRecipe; score: number } | null = null;
-      for (const recipe of safe) {
-        if (!fits(recipe)) continue;
-        const score =
-          fridgeScore(recipe, stock, date) +
-          (taste.get(recipe.id) ?? 0) +
-          varietyScore(recipe.id, date, usedOn) +
-          (recipe.category === categories[0] ? WEIGHTS.bestCategory : 0) +
-          random() * WEIGHTS.jitter;
-        if (!best || score > best.score) best = { recipe, score };
-      }
-
-      if (best) {
-        place({
-          date,
-          slot_id: slot.id,
-          recipe_id: best.recipe.id,
-          precooked_meal_id: null,
-          locked: false,
-        });
-      } else {
+      const main = choose(date, safe.filter(fits), (recipe) =>
+        recipe.category === categories[0] ? WEIGHTS.bestCategory : 0,
+      );
+      if (main) put(date, slot, main);
+      else if (dishesAt(date, slot).length === 0) {
         unfilled.push({
           date,
           slot_id: slot.id,
@@ -345,11 +413,33 @@ export function generatePlan(input: PlannerInput): PlannerResult {
         });
       }
     }
+
+    for (const slot of slots) {
+      const extras = extrasForSlot(slot.name);
+      while (hasMain(date, slot) && !isFull(date, slot)) {
+        const served = dishesAt(date, slot).map((entry) => recipeOf(entry)?.category);
+        const extra = choose(
+          date,
+          safe.filter(
+            (recipe) =>
+              extras.includes(recipe.category) &&
+              !hasRecipe(date, slot, recipe.id) &&
+              // A dish fewer is better than the same dish twice in a day.
+              (DAILY.includes(recipe.category) || !usedOn.get(recipe.id)?.includes(date)),
+          ),
+          (recipe) =>
+            (served.includes(recipe.category) ? 0 : WEIGHTS.newCategory) +
+            (ACCOMPANIMENTS.includes(recipe.category) ? WEIGHTS.accompaniment : 0),
+        );
+        if (!extra) break;
+        put(date, slot, extra);
+      }
+    }
   }
 
   const slotOrder = new Map(slots.map((slot, index) => [slot.id, index]));
   return {
-    entries: [...entries.values()].sort(
+    entries: [...meals.values()].flat().sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
         (slotOrder.get(a.slot_id) ?? 0) - (slotOrder.get(b.slot_id) ?? 0),

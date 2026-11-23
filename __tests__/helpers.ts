@@ -105,11 +105,12 @@ export function precooked(id: string, overrides: Partial<PrecookedMeal> = {}): P
   };
 }
 
-export const slot = (name: string, order: number): MealSlot => ({
+export const slot = (name: string, order: number, dishes = 1): MealSlot => ({
   ...base,
   id: name.toLowerCase(),
   name,
   order,
+  dishes,
 });
 
 /** The real schema and repositories on an in-memory SQLite. */

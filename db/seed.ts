@@ -1,5 +1,7 @@
 import type { BaseUnit, Category, NewRow, Member, RecipeDraft } from '@/types/models';
 
+import { defaultDishes } from '@/lib/planner';
+
 import type { Database } from './database';
 import type { Repositories } from './repositories';
 import { writeSettings } from './settings';
@@ -335,7 +337,7 @@ export function sampleDrafts(): RecipeDraft[] {
 export async function seed(db: Database, repos: Repositories): Promise<void> {
   await db.tx(async (sql) => {
     for (const [order, name] of DEFAULT_SLOTS.entries()) {
-      await repos.raw.slots.insert(sql, { name, order }, SEED_STAMP);
+      await repos.raw.slots.insert(sql, { name, order, dishes: defaultDishes(name) }, SEED_STAMP);
     }
     for (const member of SAMPLE_MEMBERS) {
       await repos.raw.members.insert(sql, member, SEED_STAMP);

@@ -7,12 +7,12 @@ import { Segmented } from '@/components/Choice';
 import { EmptyState } from '@/components/EmptyState';
 import { ExpiryBadge } from '@/components/Food';
 import { Icon } from '@/components/Icon';
-import { TabScreen } from '@/components/Screen';
+import { Card, TabScreen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { daysAgo, formatDate, freshness, type Freshness } from '@/lib/dates';
 import { formatQuantity } from '@/lib/units';
 import { useFridge, usePrecooked, useSettings } from '@/store';
-import { radius, spacing } from '@/theme/spacing';
+import { spacing } from '@/theme/spacing';
 import { useColors } from '@/theme/ThemeProvider';
 
 /** Top shelf is what to use first, like a well-kept fridge. */
@@ -43,16 +43,12 @@ export default function Fridge() {
 }
 
 function Shelf({ title, children }: { title: string; children: React.ReactNode }) {
-  const colors = useColors();
   return (
-    <View style={styles.shelf}>
+    <View>
       <Txt variant="heading" style={styles.shelfTitle}>
         {title}
       </Txt>
-      <View style={[styles.shelfBody, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {children}
-      </View>
-      <View style={[styles.lip, { backgroundColor: colors.border }]} />
+      <Card padded={false}>{children}</Card>
     </View>
   );
 }
@@ -163,18 +159,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   tabs: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 96, gap: spacing.xl },
-  shelf: {},
   shelfTitle: { marginBottom: spacing.sm },
-  shelfBody: {
-    borderTopLeftRadius: radius.md,
-    borderTopRightRadius: radius.md,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    marginHorizontal: 6,
-    overflow: 'hidden',
-  },
-  /** The glass edge: wider than what stands on it. */
-  lip: { height: 8, borderRadius: 4 },
   item: {
     flexDirection: 'row',
     alignItems: 'center',

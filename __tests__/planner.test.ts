@@ -1,6 +1,12 @@
 import { allergenHits, dietConflict } from '@/lib/dietary';
 import { dateRange, planRange } from '@/lib/dates';
-import { categoriesForSlot, generatePlan, type PlannerInput } from '@/lib/planner';
+import {
+  categoriesForSlot,
+  defaultDishes,
+  extrasForSlot,
+  generatePlan,
+  type PlannerInput,
+} from '@/lib/planner';
 import { sampleDrafts } from '@/db/seed';
 import { DIETS, type FullRecipe } from '@/types/models';
 
@@ -281,6 +287,112 @@ describe('regenerating', () => {
   it('drops entries for slots that no longer exist', () => {
     const orphan = { date: TODAY, slot_id: 'gone', recipe_id: 'adobo', precooked_meal_id: null, locked: true };
     expect(plan({ existing: [orphan] }).entries).not.toContainEqual(orphan);
+  });
+});
+
+describe('several dishes in a meal', () => {
+  const FEAST: FullRecipe[] = [
+    ...BOOK,
+    recipe('rice', [['Rice']], { category: 'side' }),
+    recipe('tinola', [['Chicken']], { category: 'soup' }),
+    recipe('leche flan', [['Eggs']], { category: 'dessert' }),
+    recipe('tea', [['Tea']], { category: 'drink' }),
+  ];
+  const byId = new Map(FEAST.map((r) => [r.id, r]));
+  const DINNER = slot('Dinner', 0, 3);
+  const feast = (overrides: Partial<PlannerInput> = {}) =>
+    plan({ recipes: FEAST, slots: [slot('Breakfast', 0), slot('Lunch', 1, 2), slot('Dinner', 2, 3)], ...overrides });
+  const meal = (result: ReturnType<typeof plan>, date: string, slotId: string) =>
+    result.entries.filter((e) => e.date === date && e.slot_id === slotId);
+
+  it('plans as many dishes as the slot asks for, never the same one twice', () => {
+    const result = feast();
+    for (const date of WEEK) {
+      for (const [slotId, size] of [['breakfast', 1], ['lunch', 2], ['dinner', 3]] as const) {
+        const ids = meal(result, date, slotId).map((e) => e.recipe_id);
+        expect(ids).toHaveLength(size);
+        expect(new Set(ids).size).toBe(size);
+      }
+    }
+  });
+
+  it('starts with a main dish and adds different kinds to it', () => {
+    const result = feast();
+    for (const date of WEEK) {
+      const categories = meal(result, date, 'dinner').map((e) => byId.get(e.recipe_id!)!.category);
+      expect(categoriesForSlot('Dinner')).toContain(categories[0]);
+      expect(new Set(categories).size).toBe(3);
+    }
+  });
+
+  it('never spends dinner on lunch: each main comes first', () => {
+    const two = [recipe('a', [['Beef']]), recipe('b', [['Pork']])];
+    const { entries, unfilled } = plan({
+      dates: [TODAY],
+      slots: [slot('Lunch', 0, 2), slot('Dinner', 1, 2)],
+      recipes: two,
+    });
+    expect(entries.map((e) => e.slot_id)).toEqual(['lunch', 'dinner']);
+    expect(new Set(entries.map((e) => e.recipe_id)).size).toBe(2);
+    expect(unfilled).toEqual([]);
+  });
+
+  it('leaves a dish out rather than repeat a recipe that day, but rice may return', () => {
+    const book = [recipe('a', [['Beef']]), recipe('b', [['Pork']]), recipe('rice', [['Rice']], { category: 'side' })];
+    const result = plan({ dates: [TODAY], slots: [slot('Lunch', 0, 3), slot('Dinner', 1, 3)], recipes: book });
+    for (const slotId of ['lunch', 'dinner']) {
+      const ids = meal(result, TODAY, slotId).map((e) => e.recipe_id);
+      expect(ids).toHaveLength(2);
+      expect(ids).toContain('rice');
+    }
+  });
+
+  it('keeps every dish safe, not only the main', () => {
+    const { entries } = feast({ members: [member({ allergies: ['Eggs'] }), member({ id: 'b', diet: 'vegetarian' })] });
+    const ids = new Set(entries.map((e) => e.recipe_id));
+    for (const unsafe of ['eggs', 'leche flan', 'tinola', 'adobo', 'salmon', 'prawn curry']) {
+      expect(ids).not.toContain(unsafe);
+    }
+    expect(ids).toContain('rice');
+  });
+
+  it('keeps locked dishes and fills around them', () => {
+    const locked = (id: string) => ({ date: TODAY, slot_id: 'dinner', recipe_id: id, precooked_meal_id: null, locked: true });
+    const loose = { ...locked('tea'), locked: false };
+    for (let seed = 1; seed <= 10; seed += 1) {
+      const held = plan({ dates: [TODAY], slots: [DINNER], recipes: FEAST, existing: [locked('rice'), loose], seed });
+      expect(held.entries).toHaveLength(3);
+      expect(held.entries).toContainEqual(locked('rice'));
+      expect(held.entries.some((e) => categoriesForSlot('Dinner').includes(byId.get(e.recipe_id!)!.category))).toBe(true);
+    }
+    const more = ['rice', 'adobo', 'tinola', 'tea'].map(locked);
+    expect(plan({ dates: [TODAY], slots: [DINNER], recipes: FEAST, existing: more }).entries).toEqual(more);
+  });
+
+  it('gives each meal its own pre-cooked main before doubling up', () => {
+    const cooked = (id: string, expiry: string) => precooked(id, { recipe_id: 'adobo', expiry_date: expiry });
+    const input = { slots: [slot('Lunch', 0, 2), slot('Dinner', 1, 2)], recipes: FEAST };
+    const spread = plan({ ...input, precookedMeals: [cooked('x', TODAY), cooked('y', TODAY)] });
+    expect(spread.entries.filter((e) => e.precooked_meal_id).map((e) => e.slot_id)).toEqual(['lunch', 'dinner']);
+    const three = plan({ ...input, precookedMeals: [cooked('x', TODAY), cooked('y', TODAY), cooked('z', TODAY)] });
+    expect(three.entries.filter((e) => e.precooked_meal_id)).toHaveLength(3);
+    expect(three.skippedPrecooked).toEqual([]);
+  });
+
+  it('serves a pre-cooked side next to a main, not instead of it', () => {
+    const rice = [precooked('cooked rice', { recipe_id: 'rice' })];
+    const result = plan({ dates: [TODAY], slots: [slot('Dinner', 0, 2)], recipes: FEAST, precookedMeals: rice });
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries.some((e) => e.recipe_id)).toBe(true);
+    const single = plan({ dates: [TODAY], slots: [slot('Dinner', 0, 1)], recipes: FEAST, precookedMeals: rice });
+    expect(single.entries[0]!.recipe_id).not.toBeNull();
+    expect(single.skippedPrecooked[0]!.reason).toBe('no-slot');
+  });
+
+  it('knows which meals have company', () => {
+    expect(extrasForSlot('Dinner')).toEqual(['dinner', 'lunch', 'soup', 'side', 'dessert', 'drink']);
+    expect(extrasForSlot('Breakfast')).toEqual(['breakfast', 'side', 'drink']);
+    expect(['Breakfast', 'Lunch', 'Hapunan', 'Merienda', 'Family time'].map(defaultDishes)).toEqual([1, 2, 2, 1, 2]);
   });
 });
 
