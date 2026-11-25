@@ -60,7 +60,7 @@ export default function Planner() {
           <Agenda key={plan.id} plan={plan} />
         </>
       ) : (
-        <ScrollView>
+        <ScrollView contentContainerStyle={styles.noPlan}>
           <EmptyState
             variant="cooking"
             title="No plan yet"
@@ -131,7 +131,12 @@ function Agenda({ plan }: { plan: MealPlan }) {
                 { backgroundColor: pressed ? colors.primaryTint : 'transparent' },
               ]}>
               <View style={styles.dateName}>
-                <Txt variant="heading" numberOfLines={1} style={styles.shrink}>
+                <Txt
+                  variant="heading"
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  style={styles.shrink}>
                   {dayName}, {formatDate(date)}
                 </Txt>
                 <Icon name="chevron-down" size={20} color="textMuted" />
@@ -150,16 +155,13 @@ function Agenda({ plan }: { plan: MealPlan }) {
         ) : (
           <View style={styles.planName}>
             <Txt variant="heading">{planDates(plan)}</Txt>
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => router.push({ pathname: '/planner/[id]', params: { id: plan.id } })}
-              hitSlop={8}>
-              <Txt variant="label" color="accentText">
-                Edit plan
-              </Txt>
-            </Pressable>
           </View>
         )}
+        <IconButton
+          icon="pencil-outline"
+          label="Edit plan"
+          onPress={() => router.push({ pathname: '/planner/[id]', params: { id: plan.id } })}
+        />
         <IconButton
           icon="refresh"
           label={open > 0 ? 'Regenerate plan' : 'Generate plan'}
@@ -229,6 +231,9 @@ function Agenda({ plan }: { plan: MealPlan }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   noGrow: { flexGrow: 0 },
+  // As tall as the controls above the empty Fridge and Groceries lists, so Guiney does not
+  // jump when switching tabs.
+  noPlan: { paddingTop: TOUCH + spacing.md },
   chips: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   bar: {
     flexDirection: 'row',

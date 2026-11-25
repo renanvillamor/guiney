@@ -1,4 +1,4 @@
-import { DEFAULT_SLOTS, sampleDrafts, seed } from '@/db/seed';
+import { DEFAULT_SLOTS, sampleDrafts, seed, SEED_STAMP } from '@/db/seed';
 import { readSettings, writeSettings } from '@/db/settings';
 import { migrate } from '@/db/migrations';
 
@@ -10,7 +10,27 @@ describe('schema', () => {
   it('migrates once and can be run again', async () => {
     const { db } = await testDatabase();
     await migrate(db);
-    expect(await db.first('PRAGMA user_version')).toEqual({ user_version: 2 });
+    expect(await db.first('PRAGMA user_version')).toEqual({ user_version: 4 });
+  });
+
+  it('turns sample viands into main dishes on upgrade, but not edited ones', async () => {
+    const { db, repos } = await testDatabase();
+    await seed(db, repos);
+    const category = async (title: string) =>
+      (await repos.recipes.list()).find((r) => r.title === title)!.category;
+    const tinola = (await repos.recipes.list()).find((r) => r.title === 'Tinolang manok')!;
+    const draftOf = sampleDrafts().find((d) => d.title === 'Tinolang manok')!;
+    await repos.recipes.update(tinola.id, { ...draftOf, category: 'soup' });
+    await db.tx(async (sql) => {
+      await sql.run('ALTER TABLE recipes DROP COLUMN source_url');
+      await sql.run("UPDATE recipes SET category = 'dinner' WHERE title = 'Chicken adobo'");
+      await sql.run('PRAGMA user_version = 2');
+    });
+    await migrate(db);
+    expect(await category('Chicken adobo')).toBe('main');
+    expect(await category('Tinolang manok')).toBe('soup');
+    expect(await category('Pancit bihon')).toBe('lunch');
+    expect((await repos.recipes.list()).filter((r) => r.updated_at === SEED_STAMP)).toHaveLength(9);
   });
 
   it('gives lunch and dinner two dishes when an older database upgrades', async () => {
@@ -20,6 +40,7 @@ describe('schema', () => {
     }
     await db.tx(async (sql) => {
       await sql.run('ALTER TABLE meal_slots DROP COLUMN dishes');
+      await sql.run('ALTER TABLE recipes DROP COLUMN source_url');
       await sql.run('PRAGMA user_version = 1');
     });
     const before = await db.all('SELECT id, updated_at FROM meal_slots ORDER BY "order"');
@@ -80,6 +101,13 @@ describe('recipes', () => {
     expect(after.ingredients.map((i) => i.id)).toEqual(before.ingredients.slice(0, 2).map((i) => i.id));
     expect(after.ingredients.every((i) => i.note === 'changed')).toBe(true);
     expect(after.steps.map((s) => s.instruction)).toEqual(['Only step']);
+  });
+
+  it('remembers where a recipe came from', async () => {
+    const { repos } = await testDatabase();
+    const id = await repos.recipes.add({ ...draft(), source_url: 'https://example.com/adobo' });
+    await repos.recipes.update(id, { ...draft(), title: 'Edited', source_url: 'https://example.com/adobo' });
+    expect((await repos.recipes.list())[0]).toMatchObject({ title: 'Edited', source_url: 'https://example.com/adobo' });
   });
 
   it('copies independently', async () => {

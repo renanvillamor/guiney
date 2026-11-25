@@ -22,6 +22,9 @@ export interface Palette {
   onSecondary: string;
   /** Orange that is readable as text on background/surface in this scheme. */
   accentText: string;
+  /** The square that stands in for a missing photo, and its icon. */
+  tile: string;
+  tileIcon: string;
   /** Soft backgrounds behind danger and success text. */
   dangerTint: string;
   successTint: string;
@@ -38,7 +41,7 @@ export const light: Palette = {
   background: '#FFF8F1',
   surface: '#FFFFFF',
   text: '#2B1D14',
-  textMuted: '#7C6A5E',
+  textMuted: '#7A685C',
   border: '#F1DCC9',
   fill: '#C2410C',
   fillPressed: '#9A3412',
@@ -47,6 +50,8 @@ export const light: Palette = {
   onDanger: '#FFFFFF',
   onSecondary: '#FFFFFF',
   accentText: '#C2410C',
+  tile: '#FFEDD5',
+  tileIcon: '#C2410C',
   dangerTint: '#FFF5F3',
   successTint: '#F3F8E6',
   scrim: 'rgba(43, 29, 20, 0.5)',
@@ -55,15 +60,16 @@ export const light: Palette = {
 export const dark: Palette = {
   primary: '#FB923C',
   primaryDark: '#EA580C',
-  primaryTint: '#3B2414',
+  primaryTint: '#46301F',
   secondary: '#84CC16',
   warning: '#FBBF24',
   danger: '#F87171',
   background: '#1A120D',
-  surface: '#26190F',
+  // Clearly lighter than the page, so cards stand out.
+  surface: '#2B211B',
   text: '#FBEFE6',
-  textMuted: '#BFA89A',
-  border: '#3A2A1F',
+  textMuted: '#CDBBAF',
+  border: '#4A3B31',
   fill: '#C2410C',
   fillPressed: '#9A3412',
   onFill: '#FFFFFF',
@@ -71,6 +77,8 @@ export const dark: Palette = {
   onDanger: '#1A120D',
   onSecondary: '#1A120D',
   accentText: '#FB923C',
+  tile: '#5C3317',
+  tileIcon: '#FED7AA',
   dangerTint: '#3A1A16',
   successTint: '#232B0E',
   scrim: 'rgba(0, 0, 0, 0.65)',

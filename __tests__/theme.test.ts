@@ -29,6 +29,8 @@ const PAIRS: [text: keyof Palette, background: keyof Palette][] = [
   ['danger', 'dangerTint'],
   ['secondary', 'background'],
   ['secondary', 'surface'],
+  ['textMuted', 'primaryTint'],
+  ['tileIcon', 'tile'],
   ['onFill', 'fill'],
   ['onFill', 'fillPressed'],
   ['onWarning', 'warning'],

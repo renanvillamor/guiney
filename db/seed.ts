@@ -34,7 +34,7 @@ const SAMPLES: Sample[] = [
   {
     title: 'Chicken adobo',
     description: 'Chicken simmered in vinegar, soy sauce and garlic until sticky and dark.',
-    category: 'dinner',
+    category: 'main',
     cuisine: 'Filipino',
     tags: ['classic', 'one pot'],
     prep: 10,
@@ -60,7 +60,7 @@ const SAMPLES: Sample[] = [
   {
     title: 'Sinigang na baboy',
     description: 'Pork and vegetables in a sour tamarind broth.',
-    category: 'lunch',
+    category: 'main',
     cuisine: 'Filipino',
     tags: ['soup', 'comfort'],
     prep: 15,
@@ -88,7 +88,7 @@ const SAMPLES: Sample[] = [
   {
     title: 'Tinolang manok',
     description: 'Gingery chicken soup with green papaya and chili leaves.',
-    category: 'dinner',
+    category: 'main',
     cuisine: 'Filipino',
     tags: ['soup', 'comfort'],
     prep: 15,
@@ -188,7 +188,7 @@ const SAMPLES: Sample[] = [
   {
     title: 'Ginisang monggo',
     description: 'Mung beans stewed with tomatoes, garlic and spinach.',
-    category: 'lunch',
+    category: 'main',
     cuisine: 'Filipino',
     tags: ['vegan', 'budget'],
     prep: 10,
@@ -214,7 +214,7 @@ const SAMPLES: Sample[] = [
   {
     title: 'Vegetable coconut curry',
     description: 'Squash and long beans in coconut milk, ginataan style.',
-    category: 'dinner',
+    category: 'main',
     cuisine: 'Filipino',
     tags: ['vegan', 'one pot'],
     prep: 15,
@@ -239,7 +239,7 @@ const SAMPLES: Sample[] = [
   {
     title: 'Grilled salmon with ginger greens',
     description: 'Crisp salmon over quickly wilted greens.',
-    category: 'dinner',
+    category: 'main',
     cuisine: 'Japanese',
     tags: ['quick', 'high protein'],
     prep: 10,
@@ -323,6 +323,7 @@ export function sampleDrafts(): RecipeDraft[] {
     carbs_g: sample.nutrition[2],
     fat_g: sample.nutrition[3],
     copied_from_recipe_id: null,
+    source_url: null,
     ingredients: sample.ingredients.map(([name, quantity, unit, note = '']) => ({
       name,
       quantity,

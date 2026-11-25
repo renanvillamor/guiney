@@ -61,6 +61,7 @@ export const COLUMNS: Schema = {
     carbs_g: 'number',
     fat_g: 'number',
     copied_from_recipe_id: 'text',
+    source_url: 'text',
   },
   recipe_ingredients: {
     recipe_id: 'text',

@@ -31,6 +31,7 @@ export function toDraft(recipe: FullRecipe): RecipeDraft {
     carbs_g: recipe.carbs_g,
     fat_g: recipe.fat_g,
     copied_from_recipe_id: recipe.copied_from_recipe_id,
+    source_url: recipe.source_url,
     ingredients: recipe.ingredients.map(({ name, quantity, unit, note }) => ({
       name,
       quantity,

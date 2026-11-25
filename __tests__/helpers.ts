@@ -43,6 +43,7 @@ export function recipe(
     carbs_g: null,
     fat_g: null,
     copied_from_recipe_id: null,
+    source_url: null,
     steps: [],
     ...overrides,
     ingredients: lines.map(([name, quantity = 100, unit = 'g'], position) => ({

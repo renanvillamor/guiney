@@ -4,6 +4,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 
 import { Button, Fab, IconButton } from '@/components/Button';
 import { Chip, ChipGroup } from '@/components/Choice';
+import { AddRecipeSheet } from '@/components/AddRecipe';
 import { EmptyState } from '@/components/EmptyState';
 import { Input } from '@/components/Fields';
 import { CATEGORY_ICONS, categoryLabel, Meta, RecipePhoto } from '@/components/Food';
@@ -55,6 +56,7 @@ export default function Recipes() {
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState(NO_FILTERS);
   const [sheet, setSheet] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const shown = recipes.filter((recipe) => matches(recipe, query, filters));
   const cuisines = [...new Set(recipes.map((r) => r.cuisine).filter(Boolean))].sort();
@@ -131,15 +133,16 @@ export default function Recipes() {
             <EmptyState
               variant="empty-recipes"
               title="Guiney is hungry. Add your first recipe!"
-              action={{ title: 'New recipe', onPress: () => router.push('/recipe/edit') }}
+              action={{ title: 'Add a recipe', onPress: () => setAdding(true) }}
             />
           )
         }
       />
       {recipes.length > 0 ? (
-        <Fab label="New recipe" icon="plus" onPress={() => router.push('/recipe/edit')} />
+        <Fab label="Add a recipe" icon="plus" onPress={() => setAdding(true)} />
       ) : null}
 
+      <AddRecipeSheet visible={adding} onClose={() => setAdding(false)} />
       <Sheet
         visible={sheet}
         title="Filters"

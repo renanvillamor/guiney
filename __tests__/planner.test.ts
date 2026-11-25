@@ -390,9 +390,47 @@ describe('several dishes in a meal', () => {
   });
 
   it('knows which meals have company', () => {
-    expect(extrasForSlot('Dinner')).toEqual(['dinner', 'lunch', 'soup', 'side', 'dessert', 'drink']);
-    expect(extrasForSlot('Breakfast')).toEqual(['breakfast', 'side', 'drink']);
+    expect(extrasForSlot('Dinner')).toEqual(['dinner', 'main', 'lunch', 'soup', 'side', 'dessert', 'drink']);
+    expect(extrasForSlot('Breakfast')).toEqual(['breakfast', 'main', 'side', 'drink']);
     expect(['Breakfast', 'Lunch', 'Hapunan', 'Merienda', 'Family time'].map(defaultDishes)).toEqual([1, 2, 2, 1, 2]);
+  });
+});
+
+describe('main dishes', () => {
+  const viands = ['tapa', 'menudo', 'kaldereta', 'bistek'].map((name) =>
+    recipe(name, [[name]], { category: 'main' }),
+  );
+
+  it('fit breakfast, lunch and dinner, but not snacks', () => {
+    const { entries, unfilled } = plan({ recipes: viands, dates: [TODAY] });
+    expect(entries.map((e) => e.slot_id)).toEqual(['breakfast', 'lunch', 'dinner']);
+    expect(new Set(entries.map((e) => e.recipe_id)).size).toBe(3);
+    expect(unfilled).toEqual([{ date: TODAY, slot_id: 'snack', reason: 'no-recipe-for-slot' }]);
+    for (const name of ['Almusal', 'Brunch', 'Baon', 'Hapunan', 'Supper', 'Family time']) {
+      expect(categoriesForSlot(name)).toContain('main');
+    }
+    expect(categoriesForSlot('Merienda')).not.toContain('main');
+  });
+
+  it('are as good a fit as a recipe made for that meal', () => {
+    const book = [recipe('oats', [['Oats']], { category: 'breakfast' }), viands[0]!];
+    const firstBreakfast = (liked: string) =>
+      plan({
+        recipes: book,
+        dates: [TODAY],
+        slots: [slot('Breakfast', 0)],
+        members: [member({ liked_ingredients: [liked] })],
+      }).entries[0]!.recipe_id;
+    expect(firstBreakfast('oats')).toBe('oats');
+    expect(firstBreakfast('tapa')).toBe('tapa');
+  });
+
+  it('cooked ahead can be breakfast too, but not when nobody knows what it is', () => {
+    const only = { dates: [TODAY], slots: [slot('Breakfast', 0)], recipes: viands };
+    const known = plan({ ...only, precookedMeals: [precooked('m', { recipe_id: 'tapa' })] });
+    expect(known.entries[0]!.precooked_meal_id).toBe('m');
+    const unknown = plan({ ...only, precookedMeals: [precooked('Mystery')] });
+    expect(unknown.skippedPrecooked[0]!.reason).toBe('no-slot');
   });
 });
 
@@ -400,7 +438,7 @@ describe('slots and ranges', () => {
   it('reads custom slot names', () => {
     expect(categoriesForSlot('Merienda')).toContain('snack');
     expect(categoriesForSlot('Midnight snacks')).toContain('snack');
-    expect(categoriesForSlot('Second breakfast')).toEqual(['breakfast']);
+    expect(categoriesForSlot('Second breakfast')).toEqual(['breakfast', 'main']);
     expect(categoriesForSlot('Family time')).toContain('dinner');
   });
 

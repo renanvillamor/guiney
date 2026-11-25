@@ -84,15 +84,15 @@ const RECENT_DAYS = 2;
 
 /** Slot name keyword to the categories it takes, best match first. */
 const SLOT_RULES: [keyword: string, categories: Category[]][] = [
-  ['breakfast', ['breakfast']],
-  ['almusal', ['breakfast']],
-  ['brunch', ['breakfast', 'lunch']],
-  ['lunch', ['lunch', 'dinner', 'soup']],
-  ['tanghalian', ['lunch', 'dinner', 'soup']],
-  ['baon', ['lunch', 'dinner']],
-  ['dinner', ['dinner', 'lunch', 'soup']],
-  ['supper', ['dinner', 'lunch', 'soup']],
-  ['hapunan', ['dinner', 'lunch', 'soup']],
+  ['breakfast', ['breakfast', 'main']],
+  ['almusal', ['breakfast', 'main']],
+  ['brunch', ['breakfast', 'main', 'lunch']],
+  ['lunch', ['lunch', 'main', 'dinner', 'soup']],
+  ['tanghalian', ['lunch', 'main', 'dinner', 'soup']],
+  ['baon', ['lunch', 'main', 'dinner']],
+  ['dinner', ['dinner', 'main', 'lunch', 'soup']],
+  ['supper', ['dinner', 'main', 'lunch', 'soup']],
+  ['hapunan', ['dinner', 'main', 'lunch', 'soup']],
   ['snack', ['snack', 'dessert', 'drink']],
   ['merienda', ['snack', 'dessert', 'drink']],
   ['dessert', ['dessert']],
@@ -101,7 +101,7 @@ const SLOT_RULES: [keyword: string, categories: Category[]][] = [
   ['drink', ['drink']],
 ];
 
-const MAIN_MEALS: Category[] = ['lunch', 'dinner', 'soup'];
+const MAIN_MEALS: Category[] = ['lunch', 'main', 'dinner', 'soup'];
 const ACCOMPANIMENTS: Category[] = ['side', 'soup', 'dessert', 'drink'];
 /** Rice or a drink can come back at every meal of the day. */
 const DAILY: Category[] = ['side', 'drink'];
@@ -330,7 +330,8 @@ export function generatePlan(input: PlannerInput): PlannerResult {
       const categories = categoriesForSlot(slot.name);
       return recipe
         ? categories.includes(recipe.category)
-        : categories.some((category) => MAIN_MEALS.includes(category));
+        : // Nobody said what it is, so it is not put at breakfast.
+          isMainMeal(categories) || categories.includes('soup');
     };
     const isExtraFor = (slot: MealSlot) =>
       recipe !== undefined && !isMainFor(slot) && extrasForSlot(slot.name).includes(recipe.category);
@@ -402,7 +403,7 @@ export function generatePlan(input: PlannerInput): PlannerResult {
       const categories = categoriesForSlot(slot.name);
       const fits = (recipe: FullRecipe) => categories.includes(recipe.category);
       const main = choose(date, safe.filter(fits), (recipe) =>
-        recipe.category === categories[0] ? WEIGHTS.bestCategory : 0,
+        recipe.category === categories[0] || recipe.category === 'main' ? WEIGHTS.bestCategory : 0,
       );
       if (main) put(date, slot, main);
       else if (dishesAt(date, slot).length === 0) {

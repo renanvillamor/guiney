@@ -6,7 +6,7 @@ const config: ExpoConfig = {
   name: 'Guiney',
   slug: 'guiney',
   scheme: 'guiney',
-  version: '1.0.0',
+  version: '1.1.0',
   orientation: 'portrait',
   platforms: ['android'],
   icon: './assets/images/logo.png',
@@ -15,7 +15,7 @@ const config: ExpoConfig = {
   android: {
     package: 'com.amawachoya.guiney',
     // Raise with every release.
-    versionCode: 1,
+    versionCode: 2,
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: CREAM,
@@ -40,6 +40,7 @@ const config: ExpoConfig = {
     ],
     './plugins/withShortObjectPaths',
     './plugins/withReleaseSigning',
+    './plugins/withMlKitKeepRules',
     ['./plugins/withAccentColor', { light: '#C2410C', dark: '#FB923C' }],
     'expo-sqlite',
     [
@@ -48,6 +49,17 @@ const config: ExpoConfig = {
         photosPermission: 'Guiney uses your photos to illustrate recipes.',
         cameraPermission: 'Guiney uses the camera to photograph your dishes.',
         microphonePermission: false,
+      },
+    ],
+    [
+      'expo-sharing',
+      {
+        // Links, text and photos shared from other apps, to import a recipe.
+        android: {
+          enabled: true,
+          singleShareMimeTypes: ['text/plain', 'image/*'],
+          multipleShareMimeTypes: ['image/*'],
+        },
       },
     ],
     '@react-native-community/datetimepicker',

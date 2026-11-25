@@ -115,6 +115,17 @@ const MIGRATIONS: string[] = [
   ALTER TABLE meal_slots ADD COLUMN dishes INTEGER NOT NULL DEFAULT 1;
   UPDATE meal_slots SET dishes = 2 WHERE lower(trim(name)) IN ('lunch', 'dinner');
   `,
+  // The sample viands become main dishes, unless someone has edited them. Keeping updated_at
+  // keeps them samples (SEED_STAMP).
+  `
+  UPDATE recipes SET category = 'main', dirty = 1
+  WHERE updated_at = '2020-01-01T00:00:00.000Z' AND deleted_at IS NULL AND title IN (
+    'Chicken adobo', 'Sinigang na baboy', 'Tinolang manok', 'Ginisang monggo',
+    'Vegetable coconut curry', 'Grilled salmon with ginger greens'
+  );
+  `,
+  // Where an imported recipe came from.
+  'ALTER TABLE recipes ADD COLUMN source_url TEXT',
 ];
 
 export async function migrate(db: Database): Promise<void> {

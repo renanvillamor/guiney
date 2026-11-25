@@ -19,6 +19,9 @@ export { ErrorBoundary } from 'expo-router';
 
 void SplashScreen.preventAutoHideAsync();
 
+/** A shared link opens on top of the tabs, so Back leads to them. */
+export const unstable_settings = { anchor: '(tabs)' };
+
 type Boot = 'loading' | 'ready' | 'failed';
 
 export default function RootLayout() {
@@ -101,6 +104,8 @@ function Root({ boot, onRetry }: { boot: Boot; onRetry: () => void }) {
               <Stack.Screen name="profile" />
               <Stack.Screen name="recipe/[id]" options={{ title: '' }} />
               <Stack.Screen name="recipe/edit" />
+              <Stack.Screen name="recipe/import" />
+              <Stack.Screen name="recipe/browse" />
               <Stack.Screen name="fridge-item" />
               <Stack.Screen name="precooked/index" />
               <Stack.Screen name="precooked/edit" />

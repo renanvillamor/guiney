@@ -34,6 +34,7 @@ export interface Dish {
 
 /** Main dishes first, then what goes with them. */
 const SERVING_ORDER: Category[] = [
+  'main',
   'breakfast',
   'lunch',
   'dinner',
@@ -146,8 +147,8 @@ export function MealCard({
                   rounded={radius.sm}
                 />
               ) : (
-                <View style={[styles.tile, { backgroundColor: colors.primaryTint }]}>
-                  <Icon name="fridge-outline" size={20} color="accentText" />
+                <View style={[styles.tile, { backgroundColor: colors.tile }]}>
+                  <Icon name="fridge-outline" size={20} color="tileIcon" />
                 </View>
               )}
               <View style={styles.flex}>

@@ -13,6 +13,7 @@ import { Icon, type IconName } from './Icon';
 import { Txt } from './Txt';
 
 export const CATEGORY_ICONS: Record<Category, IconName> = {
+  main: 'pot-mix',
   breakfast: 'egg-fried',
   lunch: 'rice',
   dinner: 'food-drumstick-outline',
@@ -23,8 +24,8 @@ export const CATEGORY_ICONS: Record<Category, IconName> = {
   drink: 'cup-outline',
 };
 
-export const categoryLabel = (category: string): string =>
-  category.charAt(0).toUpperCase() + category.slice(1);
+export const categoryLabel = (category: Category): string =>
+  category === 'main' ? 'Main dish' : category.charAt(0).toUpperCase() + category.slice(1);
 
 /** The dish, or its category on a warm tile when there is no photo (or it lives on another phone). */
 export function RecipePhoto({
@@ -47,7 +48,7 @@ export function RecipePhoto({
     <View
       style={[
         styles.photo,
-        { width, height, borderRadius: rounded, backgroundColor: colors.primaryTint },
+        { width, height, borderRadius: rounded, backgroundColor: colors.tile },
       ]}>
       {show ? (
         <Image
@@ -57,7 +58,7 @@ export function RecipePhoto({
           onError={() => setFailed(uri)}
         />
       ) : (
-        <Icon name={CATEGORY_ICONS[category]} size={Math.min(72, height * 0.45)} color="accentText" />
+        <Icon name={CATEGORY_ICONS[category]} size={Math.min(72, height * 0.45)} color="tileIcon" />
       )}
     </View>
   );

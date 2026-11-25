@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, IconButton } from '@/components/Button';
@@ -12,10 +12,19 @@ import { Sheet, SheetRow } from '@/components/Sheet';
 import { Txt } from '@/components/Txt';
 import { allergyWarnings, dietConflict, dietLabel } from '@/lib/dietary';
 import { sameIngredient } from '@/lib/ingredients';
+import { siteName } from '@/lib/recipeImport';
 import { formatQuantity } from '@/lib/units';
 import { useFridge, useHousehold, useRecipes, useSettings } from '@/store';
 import { radius, spacing } from '@/theme/spacing';
 import { useColors } from '@/theme/ThemeProvider';
+
+async function openSource(url: string) {
+  try {
+    await Linking.openURL(url);
+  } catch {
+    Alert.alert('Could not open the page', url);
+  }
+}
 
 export default function RecipeDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -108,6 +117,17 @@ export default function RecipeDetail() {
               <Icon name="content-copy" size={16} color={original ? 'accentText' : 'textMuted'} />
               <Txt variant="label" color={original ? 'accentText' : 'textMuted'}>
                 {original ? `Based on ${original.title}` : 'Based on a recipe that was deleted'}
+              </Txt>
+            </Pressable>
+          ) : null}
+          {recipe.source_url ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void openSource(recipe.source_url!)}
+              style={styles.based}>
+              <Icon name="web" size={16} color="accentText" />
+              <Txt variant="label" color="accentText">
+                From {siteName(recipe.source_url)}
               </Txt>
             </Pressable>
           ) : null}

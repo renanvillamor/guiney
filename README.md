@@ -15,7 +15,7 @@ npm install
 npm run android          # builds the native app and starts Metro
 ```
 
-`npx expo start` also works in Expo Go, for quick changes. The app icon, the splash and the colour of
+`npx expo start` also works in Expo Go, for quick changes (not for reading photos or receiving shares). The app icon, the splash and the colour of
 system dialogs are native, so check those in a build like the one above. Set `ANDROID_HOME` if the SDK is not found. On Windows that is usually
 `%LOCALAPPDATA%\Android\Sdk`.
 
@@ -121,6 +121,11 @@ for sync. `lib/planner.ts`, `lib/grocery.ts`, `lib/units.ts` and `lib/dietary.ts
   or diet, because their ingredients are unknown.
 - **Expiry dates** are inclusive: food is good on the date and expired the day after. Pre-cooked meals
   are scheduled no later than that day.
+- **Importing** a recipe only fills in the editor; nothing is saved until someone checks it. Websites are
+  read from their schema.org recipe data. Sites that refuse a plain download open in Guiney's own browser
+  instead. Photos are read on the phone with ML Kit and are not sent anywhere; this and Share need a real
+  build, not Expo Go. Lines Guiney was unsure of say "Please check".
+- **Main dish** is the category for viands. It fits breakfast, lunch and dinner equally.
 - **Meals** hold any number of dishes. The generator plans a main dish first, then others of a
   different kind, up to "Dishes per meal" in Meal slots (2 for lunch and dinner, otherwise 1).
   Regenerating replaces every dish that is not locked. If two phones regenerate the same plan while

@@ -26,6 +26,8 @@ export const DIETS = [
 export type Diet = (typeof DIETS)[number];
 
 export const CATEGORIES = [
+  /** A viand: fits breakfast, lunch and dinner alike. */
+  'main',
   'breakfast',
   'lunch',
   'dinner',
@@ -65,6 +67,8 @@ export interface Recipe extends BaseRow {
   carbs_g: number | null;
   fat_g: number | null;
   copied_from_recipe_id: string | null;
+  /** The web page it was imported from. */
+  source_url: string | null;
 }
 
 export interface RecipeIngredient extends BaseRow {
@@ -157,6 +161,8 @@ export interface RecipeDraft {
   carbs_g: number | null;
   fat_g: number | null;
   copied_from_recipe_id: string | null;
+  /** The web page it was imported from. */
+  source_url: string | null;
   ingredients: { name: string; quantity: number | null; unit: BaseUnit; note: string }[];
   steps: string[];
 }

@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
@@ -6,13 +7,17 @@ import { Button, IconButton } from '@/components/Button';
 import { Chip, ChipGroup, TagInput } from '@/components/Choice';
 import { Field, Input, QuantityInput, TextField } from '@/components/Fields';
 import { CATEGORY_ICONS, categoryLabel, RecipePhoto } from '@/components/Food';
+import { Icon } from '@/components/Icon';
 import { Card, FormScreen, Section } from '@/components/Screen';
 import { Sheet, SheetRow } from '@/components/Sheet';
 import { Txt } from '@/components/Txt';
+import type { ImportedLine } from '@/lib/ingredientLine';
 import { pickPhoto } from '@/lib/photos';
+import { siteName } from '@/lib/recipeImport';
 import { editableNumber, parseQuantity, toBase, toDisplay, unitsForSystem, type InputUnit } from '@/lib/units';
 import { useRecipes, useSettings } from '@/store';
 import { messageOf } from '@/store/account';
+import { useImportDraft } from '@/store/importDraft';
 import { radius, spacing } from '@/theme/spacing';
 import { CATEGORIES, type Category, type UnitSystem } from '@/types/models';
 
@@ -22,6 +27,9 @@ interface Line {
   quantity: string;
   unit: InputUnit;
   note: string;
+  /** For an imported line: how it was written, and whether it was read with confidence. */
+  original?: string;
+  sure?: boolean;
 }
 interface Step {
   key: number;
@@ -36,34 +44,55 @@ function readNumber(text: string): number | null | 'invalid' {
   return Number.isFinite(value) && value >= 0 ? value : 'invalid';
 }
 
+/** Keeps the unit it was written in when this person's units include it. */
+function importedLine(line: ImportedLine, key: number, system: UnitSystem): Line {
+  const base = { key, name: line.name, note: line.note, original: line.original, sure: line.sure };
+  if (line.amount === null) return { ...base, quantity: '', unit: 'piece' };
+  if (unitsForSystem(system).includes(line.unit)) {
+    return { ...base, quantity: editableNumber(line.amount), unit: line.unit };
+  }
+  const stored = toBase(line.amount, line.unit);
+  const shown = toDisplay(stored.quantity, stored.unit, system);
+  // "905 g", not "907.18": nobody weighs that closely, and the original is shown below it.
+  const step = shown.quantity >= 100 ? 5 : shown.quantity >= 10 ? 1 : 0.05;
+  const rounded = Math.round(shown.quantity / step) * step;
+  return { ...base, quantity: editableNumber(rounded), unit: shown.unit };
+}
+
 const asText = (value: number | null) => (value === null ? '' : String(value));
 
 export default function EditRecipe() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, imported: isImport } = useLocalSearchParams<{ id?: string; imported?: string }>();
   const { recipes, add, update } = useRecipes();
   const system: UnitSystem = useSettings((state) => state.unitSystem);
   const existing = recipes.find((row) => row.id === id);
+  // Read once: the draft belongs to this screen from here on.
+  const [draft] = useState(() => (isImport ? useImportDraft.getState().draft : null));
+  const from = draft?.recipe;
+  const [source, setSource] = useState(existing?.source_url ?? from?.sourceUrl ?? null);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   const nextKey = useRef(1000);
   const newKey = () => (nextKey.current += 1);
 
-  const [title, setTitle] = useState(existing?.title ?? '');
-  const [description, setDescription] = useState(existing?.description ?? '');
-  const [photo, setPhoto] = useState(existing?.photo_uri ?? null);
-  const [prep, setPrep] = useState(existing ? String(existing.prep_time_min) : '');
-  const [cook, setCook] = useState(existing ? String(existing.cook_time_min) : '');
-  const [servings, setServings] = useState(existing ? String(existing.servings) : '4');
-  const [category, setCategory] = useState<Category>(existing?.category ?? 'dinner');
-  const [cuisine, setCuisine] = useState(existing?.cuisine ?? '');
+  const [title, setTitle] = useState(existing?.title ?? from?.title ?? '');
+  const [description, setDescription] = useState(existing?.description ?? from?.description ?? '');
+  const [photo, setPhoto] = useState(existing?.photo_uri ?? draft?.photo ?? null);
+  const [prep, setPrep] = useState(existing ? String(existing.prep_time_min) : asText(from?.prep ?? null));
+  const [cook, setCook] = useState(existing ? String(existing.cook_time_min) : asText(from?.cook ?? null));
+  const [servings, setServings] = useState(String(existing?.servings ?? from?.servings ?? 4));
+  const [category, setCategory] = useState<Category>(existing?.category ?? from?.category ?? 'main');
+  const [cuisine, setCuisine] = useState(existing?.cuisine ?? from?.cuisine ?? '');
   const [tags, setTags] = useState(existing?.tags ?? []);
   const [nutrition, setNutrition] = useState({
-    calories: asText(existing?.calories ?? null),
-    protein_g: asText(existing?.protein_g ?? null),
-    carbs_g: asText(existing?.carbs_g ?? null),
-    fat_g: asText(existing?.fat_g ?? null),
+    calories: asText(existing?.calories ?? from?.calories ?? null),
+    protein_g: asText(existing?.protein_g ?? from?.protein_g ?? null),
+    carbs_g: asText(existing?.carbs_g ?? from?.carbs_g ?? null),
+    fat_g: asText(existing?.fat_g ?? from?.fat_g ?? null),
   });
   const [lines, setLines] = useState<Line[]>(() =>
-    (existing?.ingredients ?? []).map((item, key) => {
+    from?.lines.map((line, key) => importedLine(line, key, system)) ??
+    (existing?.ingredients ?? []).map((item, key): Line => {
       const shown = item.quantity === null ? null : toDisplay(item.quantity, item.unit, system);
       return {
         key,
@@ -75,7 +104,9 @@ export default function EditRecipe() {
     }),
   );
   const [steps, setSteps] = useState<Step[]>(() =>
-    (existing?.steps ?? []).map((step, key) => ({ key, text: step.instruction })),
+    from
+      ? from.steps.map((text, key) => ({ key, text }))
+      : (existing?.steps ?? []).map((step, key) => ({ key, text: step.instruction })),
   );
   const [photoSheet, setPhotoSheet] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -135,7 +166,7 @@ export default function EditRecipe() {
     if (Object.keys(problems).length > 0) return;
 
     const number = (value: number | null | 'invalid') => (typeof value === 'number' ? value : null);
-    const draft = {
+    const recipe = {
       title: title.trim(),
       description: description.trim(),
       photo_uri: photo,
@@ -150,6 +181,7 @@ export default function EditRecipe() {
       carbs_g: number(numbers.carbs_g),
       fat_g: number(numbers.fat_g),
       copied_from_recipe_id: existing?.copied_from_recipe_id ?? null,
+      source_url: source,
       ingredients: filled.map((line) => {
         const amount = parseQuantity(line.quantity);
         const base = toBase(amount ?? 1, line.unit);
@@ -166,11 +198,15 @@ export default function EditRecipe() {
     setSaving(true);
     try {
       if (existing) {
-        await update(existing.id, draft);
+        await update(existing.id, recipe);
         router.back();
       } else {
-        const newId = await add(draft);
-        router.replace({ pathname: '/recipe/[id]', params: { id: newId } });
+        const newId = await add(recipe);
+        useImportDraft.getState().clear();
+        // Back to the list first, so Back from the recipe does not return to the import.
+        if (isImport) router.dismissTo('/');
+        if (isImport) router.push({ pathname: '/recipe/[id]', params: { id: newId } });
+        else router.replace({ pathname: '/recipe/[id]', params: { id: newId } });
       }
     } catch (error) {
       setSaving(false);
@@ -180,7 +216,7 @@ export default function EditRecipe() {
 
   return (
     <FormScreen
-      title={existing ? 'Edit recipe' : 'New recipe'}
+      title={existing ? 'Edit recipe' : draft ? 'Check the recipe' : 'New recipe'}
       footer={
         <View style={styles.flex}>
           {Object.keys(errors).length > 0 ? (
@@ -191,6 +227,19 @@ export default function EditRecipe() {
           <Button title="Save recipe" loading={saving} onPress={() => void save()} />
         </View>
       }>
+      {draft ? (
+        <Card>
+          <View style={styles.check}>
+            <Icon name="alert-circle-outline" color="accentText" />
+            <Txt variant="label" style={styles.flex}>
+              {from && from.lines.length === 0
+                ? 'No ingredients were found. Add them below, or allergies cannot be checked.'
+                : 'Compare this with the original before saving, above all the ingredients. Allergy warnings depend on them.'}
+            </Txt>
+          </View>
+          <Button kind="tint" icon="text-box-search-outline" title="Show original" onPress={() => setShowOriginal(true)} />
+        </Card>
+      ) : null}
       <View style={styles.photo}>
         <RecipePhoto uri={photo} category={category} width="100%" height={180} rounded={radius.lg} />
         <Button
@@ -222,7 +271,7 @@ export default function EditRecipe() {
         </View>
       </View>
 
-      <Field label="Category" hint="The planner uses this to match recipes to meals.">
+      <Field label="Category" hint="The planner uses this to match recipes to meals. A main dish fits breakfast, lunch and dinner.">
         <ChipGroup>
           {CATEGORIES.map((option) => (
             <Chip
@@ -270,6 +319,12 @@ export default function EditRecipe() {
               onChangeText={(note) => setLine(line.key, { note })}
               placeholder="Note, like “finely chopped”"
             />
+            {line.original ? (
+              <Txt variant="caption" color={line.sure ? 'textMuted' : 'accentText'}>
+                {line.sure ? 'Original: ' : 'Please check. Original: '}
+                {line.original}
+              </Txt>
+            ) : null}
             {errors[`line-${line.key}`] ? (
               <Txt variant="caption" color="danger">
                 {errors[`line-${line.key}`]}
@@ -338,6 +393,27 @@ export default function EditRecipe() {
         </View>
       </Section>
 
+      {source ? (
+        <Section title="Source">
+          <View style={styles.check}>
+            <Txt color="textMuted" style={styles.flex}>
+              {siteName(source)}
+            </Txt>
+            <IconButton icon="close" size={20} color="textMuted" label="Remove source" onPress={() => setSource(null)} />
+          </View>
+        </Section>
+      ) : null}
+
+      {draft ? (
+        <Sheet visible={showOriginal} title="Original" onClose={() => setShowOriginal(false)}>
+          <View style={styles.original}>
+            {draft.pages.map((uri) => (
+              <Image key={uri} source={{ uri }} style={styles.page} contentFit="contain" accessibilityLabel="Photo of the recipe" />
+            ))}
+            <Txt>{draft.text}</Txt>
+          </View>
+        </Sheet>
+      ) : null}
       <Sheet visible={photoSheet} title="Recipe photo" onClose={() => setPhotoSheet(false)}>
         <SheetRow icon="camera-outline" title="Take a photo" onPress={() => void choosePhoto('camera')} />
         <SheetRow icon="image-outline" title="Choose from gallery" onPress={() => void choosePhoto('gallery')} />
@@ -360,6 +436,9 @@ export default function EditRecipe() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   photo: { gap: spacing.sm },
+  check: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  original: { padding: spacing.md, gap: spacing.md },
+  page: { width: '100%', aspectRatio: 3 / 4 },
   row: { flexDirection: 'row', gap: spacing.sm },
   step: { flexDirection: 'row', gap: spacing.sm },
   stepNumber: { width: 24, textAlign: 'center', paddingTop: spacing.sm + 2 },
